@@ -108,32 +108,110 @@ Collectively, we can learn 3 things from the above tables without even looking a
 2. Responses to AssessmentAnswers13 are integers ranging from 2-6 inclusive OR one of two character responses: (not asked) or (not met).
 3. Responses to AssessmentAnswers14 are integers ranging from 0-6 inclusive.
 
-Clearly, R's naiive attempt to find the appropriate separators and create columns didn't get us where we want to go. But it's useful for both diagnostic and demonstration purposes.
+Clearly, R's attempt to find the appropriate separators and create columns didn't get us where we want to go. But it's useful for both diagnostic and demonstration purposes.
 
-# Lets try an alternative approach
+## Lets try an alternative approach
 
+Let's first separate the AssessmentAnswers column into more manageable pieces. Whereas R's naiive approach was to separate on the commas in the data, we'll first try a different separator. 
 
+We also saw some brackets in the data. They were much less frequent than the commas so we'll try that next, separating on the closed bracket so that R will break everything before the ] into a new column.   
+```{r}
+df11 <- df1 %>%
+  tidyr::separate_wider_delim(AssessmentAnswers, delim = "]", names = c("chunk1", "chunk2", "chunk3", "chunk4"),
+                              too_many = "debug")
+```
+
+My own naiive guess was that there would be 4 chunks. Note the warning here. 
+
+Because we included too_many = "debug" R added new columns that tell us for each row:
+1. Whether R thinks the values were separated correctly (TRUE/FALSE), with the AssessmentAnswers_ok column.
+2. How many chunks it was expecting using ] as the delimiter, with the AssessmentAnswers_pieces column.
+3. The chunks that were left out of the separation, with the AssessmentAnswers_remainder column.
+
+Let's check out values in these 3 columns.
 
 ```{r}
-df2 <- df1 %>%
-  tidyr::separate_wider_delim(AssessmentAnswers, delim = ",", names = c("Qs_pre", "Date_pre", "Qs_post", "Date_post"))
+table(df11$AssessmentAnswers_ok)
+table(df11$AssessmentAnswers_pieces)
+table(df11$AssessmentAnswers_remainder)
+```
+
+For all 186 rows in the data R is expecting 6 chunks (ie columns) where we specified 4 chunks with our selected delimiter "]". Because of this mis-match R flagged all 186 rows as FALSE in the AssessmentAnswers_ok column.
+But, because the only values in the AssessmentAnswers_remainder column are separators we no longer need we can continue to break out columns from these four chunks.
+
+Now, separate chunk1 into four pieces using the [ delimiter.
+```{r}
+df111 <- df11 %>%
+  tidyr::separate_wider_delim(chunk1, delim = "[", names = c("chunk1a", "chunk1b", "chunk1c", "chunk1d"),
+                              too_many = "debug")
 ```
 
 
 
-
-
+Let's do some cleanup by dropping columns we don't need before breaking apart chunk1c using the "," delimiter.
 ```{r}
-df2 <- df1 %>%
-  separate_wider_delim(AssessmentAnswers, delim = ",", names=c("Q1_pre", "Q2_pre", "Q3_pre", "Q4_pre", "Q5_pre", "Q6_pre",
+df1111 <- df111 %>%
+  select(-c("chunk1a", "chunk1b", "chunk1":"chunk1_remainder", "AssessmentAnswers":"AssessmentAnswers_remainder")) %>%
+  separate_wider_delim(chunk1c, delim = ",", names=c("Q1_pre", "Q2_pre", "Q3_pre", "Q4_pre", "Q5_pre", "Q6_pre",
                                                                "Q7_pre", "Q8_pre", "Q9_pre", "Q10_pre", "Q11_pre", "Q12_pre",
-                                                               "Q13_pre", "Q14_pre", "Q15_pre", "Q16_pre", "D1", "D2", "D3",
-                                                               "D4", "D5", "D6", "Task_pre", "Q17_pre", "Q18_pre", "Q19_pre"
-                                                               ))
+                                                               "Q13_pre", "Q14_pre", "Q15_pre", "Q16_pre", "Age", "Sex", 
+                                                                "Race_ethnicity", "Political_ideology", "Religion", "Zip", 
+                                                                "Condition_pre"), too_many = "debug")
+
+# need to figure out how to account for some missing values/empty cells in the Religion column that are pulling in values from the adjacent Zip column instead and populating values for Zip that are supposed to be contained in the Condition_pre column (ie B1), which leaves the Condition_pre column blank for about the first 50 rows. 
 ```
 
 
-library(janitor) # need this for clean_names() to drop blank spaces in column names
+We'll leave chunk1d alone for now as those responses appear to represent responses to a single item/question. Note the pipes | that start and end values in this column.
+
+Let's do some cleanup again by dropping columns we don't need before breaking apart chunk2 using the "," delimiter.
+```{r}
+df3 <- df1111 %>%
+  select(-c("chunk1c":"chunk1c_remainder")) %>%
+  separate_wider_delim(chunk2, delim = ",", names=c("chunk2a", "chunk2b", "chunk2c", "chunk2d", "chunk2e", "chunk2f", "chunk2g"),
+                       too_many="debug")
+```
+
+Let's do some cleanup again by dropping columns we don't need before breaking apart chunk3 using the "," delimiter.
+```{r}
+df33 <- df3 %>%
+  select(-c("chunk2a", "chunk2d":"chunk2f", "chunk2":"chunk2_remainder")) %>%
+  separate_wider_delim(chunk3, delim = "[", names=c("chunk3a", "chunk3b", "chunk3c"), too_many="debug")
+
+
+```
+
+Let's do some cleanup again by dropping columns we don't need before breaking apart chunk3b using the "," delimiter.
+```{r}
+df333 <- df33 %>%
+  select(-c("chunk3a", "chunk3":"chunk3_remainder")) %>%
+  separate_wider_delim(chunk3b, delim = ",", names=c("Q1_post", "Q2_post", "Q3_post", "Q4_post", "Q5_post", "Q6_post",
+                                                    "Q7_post", "Q8_post", "Q9_post", "Q10_post", "Q11_post", "Q12_post",
+                                                    "Q13_post", "Q14_post", "Q15_post", "Q16_post", "Age_post", "Sex_post",
+                                                    "Race_ethnicity_post", "Political_ideology_post", "Religion_post", "Zip_post",
+                                                    "Condition_post"),
+                                            too_many="debug")
+```
+
+Let's do some cleanup again by dropping columns we don't need before breaking apart chunk4 using the "," delimiter.
+```{r}
+df4 <- df333 %>%
+  select(-c("chunk3b":"chunk3b_remainder")) %>%
+  separate_wider_delim(chunk4, delim = ",", names=c("chunk4a", "chunk4b", "chunk4c", "chunk4d", "chunk4e", "chunk4f", "chunk4g"),
+                       too_many="debug")
+```
+
+Doing some final cleanup.
+```{r}
+df44 <- df4 %>%
+  select(OMID:Condition_pre, Text_responses_pre = chunk1d, chunk2b:chunk2c, TimeStamp_pre = chunk2g, Q1_post:Q16_post, 
+         Age_post:Condition_post, Text_responses_post = chunk3c, chunk4b:chunk4c, TimeStamp_post = chunk4g)
+
+# need to make the time stamp cols into class = date
+# remove all unnecessary parentheses
+# decide if I want to do anything else with the text response columns
+```
+
 
 
 

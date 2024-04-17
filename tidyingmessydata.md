@@ -3,35 +3,432 @@ Tidying Very Messy Data
 Gaby Pogge
 2024-04-16
 
-Initial Setup
+## Initial Setup
 
-## if you want to keep only markdown and get GitHub-flavored markdown, use output: github_document above
+If you want to keep only markdown and get GitHub-flavored markdown, use
+output: github_document above.
 
-## If there are R chunks that make figures, the usage of markdown output formats will also cause those figure files to be left behind in a sensibly named sub-directory such as foo_files.
+In many cases, you only want the markdown, which is most useful on
+github because it will be a directly viewable/readable report. If you
+want to use output: html_document but keep the intermediate markdown
+(.md) file, use: output: html_document: keep_md: true
 
-## If you commit and push foo.md and everything inside foo_files, then anyone with permission to view your GitHub repo can see a decent-looking version of your report.
+If there are R chunks that make figures, the usage of markdown output
+formats will also cause those figure files to be left behind locally on
+your machine in a sensibly named sub-directory such as foo_files.
 
-## R Markdown
+If you commit and push foo.md and everything inside foo_files, then
+anyone with permission to view your GitHub repo can see a decent-looking
+version of your report.
 
-This is an R Markdown document. Markdown is a simple formatting syntax
-for authoring HTML, PDF, and MS Word documents. For more details on
-using R Markdown see <http://rmarkdown.rstudio.com>.
+By making foo.Rmd available, others can see and run your actual code. By
+also sharing foo.md and/or foo.html, others can casually browse your end
+product and decide if they want to obtain and run the code.
 
-When you click the **Knit** button a document will be generated that
-includes both content as well as the output of any embedded R code
-chunks within the document. You can embed an R code chunk like this:
+## Installing packages needed for initial steps
 
 ``` r
-summary(cars)
+library(rmarkdown)
+library(tidyverse)
 ```
 
-    ##      speed           dist       
-    ##  Min.   : 4.0   Min.   :  2.00  
-    ##  1st Qu.:12.0   1st Qu.: 26.00  
-    ##  Median :15.0   Median : 36.00  
-    ##  Mean   :15.4   Mean   : 42.98  
-    ##  3rd Qu.:19.0   3rd Qu.: 56.00  
-    ##  Max.   :25.0   Max.   :120.00
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ## ✔ forcats   1.0.0     ✔ stringr   1.5.0
+    ## ✔ ggplot2   3.5.0     ✔ tibble    3.2.1
+    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+    ## ✔ purrr     1.0.2     
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
+library(googlesheets4)
+```
+
+## Create a sheet id from google sheet data
+
+``` r
+gs4_deauth() #tells r to not ask for authentication (for publicly hosted data such as this file)
+
+ssid1 <- googlesheets4::as_sheets_id("https://docs.google.com/spreadsheets/d/1lo91j3axIZr-z85tam2KvCMf2UkFYlp6BrtMC2Bt7To/edit#gid=0") # creating a sheet id from the source url
+```
+
+## Inspect the ssid1 object
+
+``` r
+class(ssid1) # confirms that ssid1 is indeed a sheet id, and the column type is character
+```
+
+    ## [1] "sheets_id"  "drive_id"   "vctrs_vctr" "character"
+
+``` r
+unclass(ssid1) # this is the google sheet ID, dropping the url
+```
+
+    ## [1] "1lo91j3axIZr-z85tam2KvCMf2UkFYlp6BrtMC2Bt7To"
+
+## Read in verymessydata from google sheets using the sheet id we created from the source url
+
+``` r
+df1 <- read_sheet(ssid1)
+```
+
+    ## ✔ Reading from "verymessydata".
+
+    ## ✔ Range 'Sheet1'.
+
+# View and inspect the data
+
+``` r
+view(df1) # shows the full dataset
+glimpse(df1) # provides number of rows, columns, and column types
+```
+
+    ## Rows: 186
+    ## Columns: 2
+    ## $ OMID              <dbl> 3.8079e+12, 7.2605e+11, 8.5051e+12, 3.6257e+12, 9.21…
+    ## $ AssessmentAnswers <chr> "[[80, 21, 3, 2, 2, 2, 5, 4, 5, 6, 5, Yes, 5, 5, 6, …
+
+``` r
+head(df1, 1) # shows just the first row of data
+```
+
+    ## # A tibble: 1 × 2
+    ##            OMID AssessmentAnswers                                               
+    ##           <dbl> <chr>                                                           
+    ## 1 3807900000000 "[[80, 21, 3, 2, 2, 2, 5, 4, 5, 6, 5, Yes, 5, 5, 6, (not asked)…
+
+We see 186 rows and two columns. The first column is numeric and
+contains response IDs that serve as a unique identifier to differentiate
+the responses of individual participants. The second column is a
+character vector that contains ALL of the responses participants
+provided to each item in the survey. We will need to “tidy” this data by
+breaking these responses into individual columns and setting their
+appropriate column types (eg numeric vs character) before we can proceed
+to analysis.
+
+Take a peek at just the first row of data. You can see there are several
+different styles of separators (commas, parentheses, brackets) that
+indicate the responses to different items in the survey.
+
+Notice there are also two time stamps indicating the responses were
+collected at two different points in time: a “pre” and a “post”. In this
+context, both pre and post responses were collected because something
+happened in between these two time points that we think might impact the
+variation in responses from pre-test to post-test. Given this sample
+data is from a social-psychological survey, the “test” in between pre
+and post responses was likely some experimental condition.
+
+Let’s dig into the data to discover whether this was a between-groups
+experiment (where some participants received one experimental
+manipulation and some participants received a different experimental
+manipulation) or a within-groups experiment (where all participants
+received the same manipulation).
+
+# First, let R try guessing the breaks indicating individual columns, which it will automatically number
+
+``` r
+df2 <- df1 %>%
+  tidyr::separate_wider_delim(AssessmentAnswers, delim = " ", names_sep = "", too_few = "align_start")
+
+head(df2, 2)
+```
+
+    ## # A tibble: 2 × 318
+    ##            OMID AssessmentAnswers1 AssessmentAnswers2 AssessmentAnswers3
+    ##           <dbl> <chr>              <chr>              <chr>             
+    ## 1 3807900000000 [[80,              21,                3,                
+    ## 2  726050000000 [[100,             37,                6,                
+    ## # ℹ 314 more variables: AssessmentAnswers4 <chr>, AssessmentAnswers5 <chr>,
+    ## #   AssessmentAnswers6 <chr>, AssessmentAnswers7 <chr>,
+    ## #   AssessmentAnswers8 <chr>, AssessmentAnswers9 <chr>,
+    ## #   AssessmentAnswers10 <chr>, AssessmentAnswers11 <chr>,
+    ## #   AssessmentAnswers12 <chr>, AssessmentAnswers13 <chr>,
+    ## #   AssessmentAnswers14 <chr>, AssessmentAnswers15 <chr>,
+    ## #   AssessmentAnswers16 <chr>, AssessmentAnswers17 <chr>, …
+
+We can see that R does a pretty good job guessing the “,” delimiter for
+AssessmentAnswers1 - AssessmentAnswers11. Values that now appear in
+those columns are all integers, although they still include the
+delimiters for now.
+
+Where R’s guessing breaks down first is at AssessmentAnswers12. But we
+can’t necessarily tell that from the above. “Yes” and “Unsure”responses
+in the AssessmentAnswers12 column include the “,” separator that R
+identified, and they are followed by integers in the adjacent
+AssessmentAnswers13 column. We can probably assume that these values
+represent single word responses to the corresponding question. But let’s
+take a closer peek at the values in that column to see if there are
+additional responses that we can’t see here. Minimally, we might expect
+we’ll find a “No” response somewhere in this column.
+
+``` r
+table(df2$AssessmentAnswers12) # all 186 rows start with one of these four responses
+```
+
+    ## 
+    ##     I'm     No, Unsure,    Yes, 
+    ##      11      22      68      85
+
+Upon further inspection we can see that there are four values of
+character responses to AssessmentAnswers12, with two additional
+responses we didn’t see before. We see that there is indeed a “No”
+response option, and an additional response appears to begin with “I’m”.
+We can surmise that this word/value is probably followed by additional
+words/values that R placed in adjacent columns following
+AssessmentAnswers12 - in part because we don’t see the comma separator
+included last in the value/character string, whereas it is included in
+the “No,” “Unsure,” and “Yes,” responses.
+
+Let’s check out 13 and 14.
+
+``` r
+table(df2$AssessmentAnswers13)
+```
+
+    ## 
+    ##    (not      2,      3,      4,      5,      6, already 
+    ##      33       3      20      24      43      52      11
+
+``` r
+table(df2$AssessmentAnswers14)
+```
+
+    ## 
+    ##          0,          1,          2,          3,          4,          5, 
+    ##           2           2           7          23          23          47 
+    ##          6,     asked),       met), subscribed, 
+    ##          38          20          13          11
+
+For the same reasons, we can expect that “(not” values contained in
+AssessmentAnswers13 are probably followed by either “asked)” or “met)”
+values in AssessmentAnswers14.
+
+We now have reason to suspect that for some responses/rows there is
+spillage from the values in AssessmentAnswers12 to the values in
+AssessmentAnswers13 and AssessmentAnswers14.
+
+Let’s take a look at the values that appear when we “cross” the adjacent
+columns (ie 12 with 13 and, separately, 13 with 14).
+
+``` r
+table(df2$AssessmentAnswers12, df2$AssessmentAnswers13)
+```
+
+    ##          
+    ##           (not 2, 3, 4, 5, 6, already
+    ##   I'm        0  0  0  0  0  0      11
+    ##   No,        4  1  2  4  5  6       0
+    ##   Unsure,   12  1 11  7 12 25       0
+    ##   Yes,      17  1  7 13 26 21       0
+
+``` r
+table(df2$AssessmentAnswers13, df2$AssessmentAnswers14)
+```
+
+    ##          
+    ##           0, 1, 2, 3, 4, 5, 6, asked), met), subscribed,
+    ##   (not     0  0  0  0  0  0  0      20    13           0
+    ##   2,       0  0  0  0  2  1  0       0     0           0
+    ##   3,       2  0  3  8  3  2  2       0     0           0
+    ##   4,       0  1  1 10  9  3  0       0     0           0
+    ##   5,       0  0  2  3  3 29  6       0     0           0
+    ##   6,       0  1  1  2  6 12 30       0     0           0
+    ##   already  0  0  0  0  0  0  0       0     0          11
+
+Look at the pattern of 0s in the first row of the top table and the last
+row in the bottom table. We can make an educated guess that there were
+11 responses of the 186 total responses that indicated “I’m already
+subscribed”, as those values are not paired with any other adjacent
+values. Apply this same logic to the pattern of 0s for the “asked),” and
+“met)” columns in the bottom table.
+
+This may seem like a tedious exercise in this “small data” context where
+the urge may be to just visually inspect the data to confirm your
+suspicions about what cell values should contain for particular columns.
+But finding other ways becomes increasingly important with larger
+datasets that make it untenable to glance at every single row.
+
+Collectively, we can learn 3 things from the above tables without even
+looking at the data frame df2 itself.
+
+1.  There are four possible responses to AssessmentAnswers12: I’m
+    already subscribed, No, Unsure, Yes.
+2.  Responses to AssessmentAnswers13 are integers ranging from 2-6
+    inclusive OR one of two character responses: (not asked) or (not
+    met).
+3.  Responses to AssessmentAnswers14 are integers ranging from 0-6
+    inclusive.
+
+Clearly, R’s attempt to find the appropriate separators and create
+columns didn’t get us where we want to go. But it’s useful for both
+diagnostic and demonstration purposes.
+
+## Lets try an alternative approach
+
+Let’s first separate the AssessmentAnswers column into more manageable
+pieces. Whereas R’s naiive approach was to separate on the commas in the
+data, we’ll first try a different separator.
+
+We also saw some brackets in the data. They were much less frequent than
+the commas so we’ll try that next, separating on the closed bracket so
+that R will break everything before the \] into a new column.
+
+``` r
+df11 <- df1 %>%
+  tidyr::separate_wider_delim(AssessmentAnswers, delim = "]", names = c("chunk1", "chunk2", "chunk3", "chunk4"),
+                              too_many = "debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `AssessmentAnswers_ok`,
+    ## `AssessmentAnswers_pieces`, and `AssessmentAnswers_remainder`.
+
+My own naiive guess was that there would be 4 chunks. Note the warning
+here.
+
+Because we included too_many = “debug” R added new columns that tell us
+for each row: 1. Whether R thinks the values were separated correctly
+(TRUE/FALSE), with the AssessmentAnswers_ok column. 2. How many chunks
+it was expecting using \] as the delimiter, with the
+AssessmentAnswers_pieces column. 3. The chunks that were left out of the
+separation, with the AssessmentAnswers_remainder column.
+
+Let’s check out values in these 3 columns.
+
+``` r
+table(df11$AssessmentAnswers_ok)
+```
+
+    ## 
+    ## FALSE 
+    ##   186
+
+``` r
+table(df11$AssessmentAnswers_pieces)
+```
+
+    ## 
+    ##   6 
+    ## 186
+
+``` r
+table(df11$AssessmentAnswers_remainder)
+```
+
+    ## 
+    ##  ]] 
+    ## 186
+
+For all 186 rows in the data R is expecting 6 chunks (ie columns) where
+we specified 4 chunks with our selected delimiter “\]”. Because of this
+mis-match R flagged all 186 rows as FALSE in the AssessmentAnswers_ok
+column. But, because the only values in the AssessmentAnswers_remainder
+column are separators we no longer need we can continue to break out
+columns from these four chunks.
+
+Now, separate chunk1 into four pieces using the \[ delimiter.
+
+``` r
+df111 <- df11 %>%
+  tidyr::separate_wider_delim(chunk1, delim = "[", names = c("chunk1a", "chunk1b", "chunk1c", "chunk1d"),
+                              too_many = "debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk1_ok`, `chunk1_pieces`, and
+    ## `chunk1_remainder`.
+
+Let’s do some cleanup by dropping columns we don’t need before breaking
+apart chunk1c using the “,” delimiter.
+
+``` r
+df1111 <- df111 %>%
+  select(-c("chunk1a", "chunk1b", "chunk1":"chunk1_remainder", "AssessmentAnswers":"AssessmentAnswers_remainder")) %>%
+  separate_wider_delim(chunk1c, delim = ",", names=c("Q1_pre", "Q2_pre", "Q3_pre", "Q4_pre", "Q5_pre", "Q6_pre",
+                                                               "Q7_pre", "Q8_pre", "Q9_pre", "Q10_pre", "Q11_pre", "Q12_pre",
+                                                               "Q13_pre", "Q14_pre", "Q15_pre", "Q16_pre", "Age", "Sex", 
+                                                                "Race_ethnicity", "Political_ideology", "Religion", "Zip", 
+                                                                "Condition_pre"), too_many = "debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk1c_ok`, `chunk1c_pieces`, and
+    ## `chunk1c_remainder`.
+
+``` r
+# need to figure out how to account for some missing values/empty cells in the Religion column that are pulling in values from the adjacent Zip column instead and populating values for Zip that are supposed to be contained in the Condition_pre column (ie B1), which leaves the Condition_pre column blank for about the first 50 rows. 
+```
+
+We’ll leave chunk1d alone for now as those responses appear to represent
+responses to a single item/question. Note the pipes \| that start and
+end values in this column.
+
+Let’s do some cleanup again by dropping columns we don’t need before
+breaking apart chunk2 using the “,” delimiter.
+
+``` r
+df3 <- df1111 %>%
+  select(-c("chunk1c":"chunk1c_remainder")) %>%
+  separate_wider_delim(chunk2, delim = ",", names=c("chunk2a", "chunk2b", "chunk2c", "chunk2d", "chunk2e", "chunk2f", "chunk2g"),
+                       too_many="debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk2_ok`, `chunk2_pieces`, and
+    ## `chunk2_remainder`.
+
+Let’s do some cleanup again by dropping columns we don’t need before
+breaking apart chunk3 using the “,” delimiter.
+
+``` r
+df33 <- df3 %>%
+  select(-c("chunk2a", "chunk2d":"chunk2f", "chunk2":"chunk2_remainder")) %>%
+  separate_wider_delim(chunk3, delim = "[", names=c("chunk3a", "chunk3b", "chunk3c"), too_many="debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk3_ok`, `chunk3_pieces`, and
+    ## `chunk3_remainder`.
+
+Let’s do some cleanup again by dropping columns we don’t need before
+breaking apart chunk3b using the “,” delimiter.
+
+``` r
+df333 <- df33 %>%
+  select(-c("chunk3a", "chunk3":"chunk3_remainder")) %>%
+  separate_wider_delim(chunk3b, delim = ",", names=c("Q1_post", "Q2_post", "Q3_post", "Q4_post", "Q5_post", "Q6_post",
+                                                    "Q7_post", "Q8_post", "Q9_post", "Q10_post", "Q11_post", "Q12_post",
+                                                    "Q13_post", "Q14_post", "Q15_post", "Q16_post", "Age_post", "Sex_post",
+                                                    "Race_ethnicity_post", "Political_ideology_post", "Religion_post", "Zip_post",
+                                                    "Condition_post"),
+                                            too_many="debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk3b_ok`, `chunk3b_pieces`, and
+    ## `chunk3b_remainder`.
+
+Let’s do some cleanup again by dropping columns we don’t need before
+breaking apart chunk4 using the “,” delimiter.
+
+``` r
+df4 <- df333 %>%
+  select(-c("chunk3b":"chunk3b_remainder")) %>%
+  separate_wider_delim(chunk4, delim = ",", names=c("chunk4a", "chunk4b", "chunk4c", "chunk4d", "chunk4e", "chunk4f", "chunk4g"),
+                       too_many="debug")
+```
+
+    ## Warning: Debug mode activated: adding variables `chunk4_ok`, `chunk4_pieces`, and
+    ## `chunk4_remainder`.
+
+Doing some final cleanup.
+
+``` r
+df44 <- df4 %>%
+  select(OMID:Condition_pre, Text_responses_pre = chunk1d, chunk2b:chunk2c, TimeStamp_pre = chunk2g, Q1_post:Q16_post, 
+         Age_post:Condition_post, Text_responses_post = chunk3c, chunk4b:chunk4c, TimeStamp_post = chunk4g)
+
+# need to make the time stamp cols into class = date
+# remove all unnecessary parentheses
+# decide if I want to do anything else with the text response columns
+```
 
 ## Including Plots
 
