@@ -10,21 +10,137 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Initial Setup
+## Initial Setup
 
-## if you want to keep only markdown and get GitHub-flavored markdown, use output: github_document above
-## If there are R chunks that make figures, the usage of markdown output formats will also cause those figure files to be left behind in a sensibly named sub-directory such as foo_files.
-## If you commit and push foo.md and everything inside foo_files, then anyone with permission to view your GitHub repo can see a decent-looking version of your report.
+If you want to keep only markdown and get GitHub-flavored markdown, use output: github_document above.
 
-## R Markdown
+In many cases, you only want the markdown, which is most useful on github because it will be a directly viewable/readable report.
+If you want to use output: html_document but keep the intermediate markdown (.md) file, use:
+output: 
+    html_document:
+        keep_md: true
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+If there are R chunks that make figures, the usage of markdown output formats will also cause those figure files to be left behind locally on your machine in a sensibly named sub-directory such as foo_files.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+If you commit and push foo.md and everything inside foo_files, then anyone with permission to view your GitHub repo can see a decent-looking version of your report.
 
-```{r cars}
-summary(cars)
+By making foo.Rmd available, others can see and run your actual code. By also sharing foo.md and/or foo.html, others can casually browse your end product and decide if they want to obtain and run the code.
+
+## Installing packages needed for initial steps
+```{r}
+library(rmarkdown)
+library(tidyverse)
+library(googlesheets4)
 ```
+
+## Create a sheet id from google sheet data
+```{r}
+gs4_deauth() #tells r to not ask for authentication (for publicly hosted data such as this file)
+
+ssid1 <- googlesheets4::as_sheets_id("https://docs.google.com/spreadsheets/d/1lo91j3axIZr-z85tam2KvCMf2UkFYlp6BrtMC2Bt7To/edit#gid=0") # creating a sheet id from the source url
+```
+
+## Inspect the ssid1 object
+```{r}
+class(ssid1) # confirms that ssid1 is indeed a sheet id, and the column type is character
+unclass(ssid1) # this is the google sheet ID, dropping the url
+```
+
+## Read in verymessydata from google sheets using the sheet id we created from the source url 
+```{r}
+df1 <- read_sheet(ssid1)
+```
+
+# View and inspect the data
+```{r}
+view(df1) # shows the full dataset
+glimpse(df1) # provides number of rows, columns, and column types
+head(df1, 1) # shows just the first row of data
+```
+
+We see 186 rows and two columns. The first column is numeric and contains response IDs that serve as a unique identifier to differentiate the responses of individual participants. The second column is a character vector that contains ALL of the responses participants provided to each item in the survey. We will need to "tidy" this data by breaking these responses into individual columns and setting their appropriate column types (eg numeric vs character) before we can proceed to analysis.
+
+Take a peek at just the first row of data. You can see there are several different styles of separators (commas, parentheses, brackets) that indicate the responses to different items in the survey.
+
+Notice there are also two time stamps indicating the responses were collected at two different points in time: a "pre" and a "post". In this context, both pre and post responses were collected because something happened in between these two time points that we think might impact the variation in responses from pre-test to post-test. Given this sample data is from a social-psychological survey, the "test" in between pre and post responses was likely some experimental condition. 
+
+Let's dig into the data to discover whether this was a between-groups experiment (where some participants received one experimental manipulation and some participants received a different experimental manipulation) or a within-groups experiment (where all participants received the same manipulation).
+
+# First, let R try guessing the breaks indicating individual columns, which it will automatically number
+```{r}
+df2 <- df1 %>%
+  tidyr::separate_wider_delim(AssessmentAnswers, delim = " ", names_sep = "", too_few = "align_start")
+
+head(df2, 2)
+```
+We can see that R does a pretty good job guessing the "," delimiter for AssessmentAnswers1 - AssessmentAnswers11. Values that now appear in those columns are all integers, although they still include the delimiters for now. 
+
+Where R's guessing breaks down first is at AssessmentAnswers12. But we can't necessarily tell that from the above. "Yes" and "Unsure"responses in the AssessmentAnswers12 column include the "," separator that R identified, and they are followed by integers in the adjacent AssessmentAnswers13 column. We can probably assume that these values represent single word responses to the corresponding question. But let's take a closer peek at the values in that column to see if there are additional responses that we can't see here. Minimally, we might expect we'll find a "No" response somewhere in this column.
+
+```{r}
+table(df2$AssessmentAnswers12) # all 186 rows start with one of these four responses
+```
+
+Upon further inspection we can see that there are four values of character responses to AssessmentAnswers12, with two additional responses we didn't see before. We see that there is indeed a "No" response option, and an additional response appears to begin with "I'm". We can surmise that this word/value is probably followed by additional words/values that R placed in adjacent columns following AssessmentAnswers12 - in part because we don't see the comma separator included last in the value/character string, whereas it is included in the "No," "Unsure," and "Yes," responses. 
+
+Let's check out 13 and 14.
+```{r}
+table(df2$AssessmentAnswers13)
+table(df2$AssessmentAnswers14)
+```
+For the same reasons, we can expect that "(not" values contained in AssessmentAnswers13 are probably followed by either "asked)" or "met)" values in AssessmentAnswers14.  
+
+We now have reason to suspect that for some responses/rows there is spillage from the values in AssessmentAnswers12 to the values in AssessmentAnswers13 and AssessmentAnswers14.
+
+Let's take a look at the values that appear when we "cross" the adjacent columns (ie 12 with 13 and, separately, 13 with 14). 
+
+```{r}
+table(df2$AssessmentAnswers12, df2$AssessmentAnswers13)
+table(df2$AssessmentAnswers13, df2$AssessmentAnswers14)
+```
+Look at the pattern of 0s in the first row of the top table and the last row in the bottom table. We can make an educated guess that there were 11 responses of the 186 total responses that indicated "I'm already subscribed", as those values are not paired with any other adjacent values. Apply this same logic to the pattern of 0s for the "asked)," and "met)" columns in the bottom table.
+
+This may seem like a tedious exercise in this "small data" context where the urge may be to just visually inspect the data to confirm your suspicions about what cell values should contain for particular columns. But finding other ways becomes increasingly important with larger datasets that make it untenable to glance at every single row.
+
+Collectively, we can learn 3 things from the above tables without even looking at the data frame df2 itself. 
+
+1. There are four possible responses to AssessmentAnswers12: I'm already subscribed, No, Unsure, Yes.
+2. Responses to AssessmentAnswers13 are integers ranging from 2-6 inclusive OR one of two character responses: (not asked) or (not met).
+3. Responses to AssessmentAnswers14 are integers ranging from 0-6 inclusive.
+
+Clearly, R's naiive attempt to find the appropriate separators and create columns didn't get us where we want to go. But it's useful for both diagnostic and demonstration purposes.
+
+# Lets try an alternative approach
+
+
+
+```{r}
+df2 <- df1 %>%
+  tidyr::separate_wider_delim(AssessmentAnswers, delim = ",", names = c("Qs_pre", "Date_pre", "Qs_post", "Date_post"))
+```
+
+
+
+
+
+```{r}
+df2 <- df1 %>%
+  separate_wider_delim(AssessmentAnswers, delim = ",", names=c("Q1_pre", "Q2_pre", "Q3_pre", "Q4_pre", "Q5_pre", "Q6_pre",
+                                                               "Q7_pre", "Q8_pre", "Q9_pre", "Q10_pre", "Q11_pre", "Q12_pre",
+                                                               "Q13_pre", "Q14_pre", "Q15_pre", "Q16_pre", "D1", "D2", "D3",
+                                                               "D4", "D5", "D6", "Task_pre", "Q17_pre", "Q18_pre", "Q19_pre"
+                                                               ))
+```
+
+
+library(janitor) # need this for clean_names() to drop blank spaces in column names
+
+
+
+
+
+
+
 
 ## Including Plots
 
