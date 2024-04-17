@@ -2,7 +2,8 @@
 title: "Tidying Very Messy Data"
 author: "Gaby Pogge"
 date: "2024-04-16"
-output: html_document
+output: 
+  github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -10,6 +11,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 Initial Setup
+
+## if you want to keep only markdown and get GitHub-flavored markdown, use output: github_document above
+## If there are R chunks that make figures, the usage of markdown output formats will also cause those figure files to be left behind in a sensibly named sub-directory such as foo_files.
+## If you commit and push foo.md and everything inside foo_files, then anyone with permission to view your GitHub repo can see a decent-looking version of your report.
 
 ## R Markdown
 
