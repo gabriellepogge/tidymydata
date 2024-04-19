@@ -3,82 +3,95 @@ title: "Tidying Very Messy Data"
 author: "Gaby Pogge"
 date: "2024-04-16"
 output: 
-  github_document
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+  keep_md: TRUE
+
+    
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Initial Setup
+# Understand the Problem
 
-If you want to keep only markdown and get GitHub-flavored markdown, use output: github_document above.
+In a perfect world when you want to jump into an exciting analysis your data is tidy and clean and you can dive right in. 
 
-In many cases, you only want the markdown, which is most useful on github because it will be a directly viewable/readable report.
-If you want to use output: html_document but keep the intermediate markdown (.md) file, use:
-output: 
-    html_document:
-        keep_md: true
+However, that is often not the case. For a variety of reasons involving how data is collected, stored, and output from the data source you may find yourself in a situation where the data you want to work with are very messy.
 
-If there are R chunks that make figures, the usage of markdown output formats will also cause those figure files to be left behind locally on your machine in a sensibly named sub-directory such as foo_files.
+In this exercise we'll walk through how to "tidy" a messy dataset using the R tidyverse package. 
 
-If you commit and push foo.md and everything inside foo_files, then anyone with permission to view your GitHub repo can see a decent-looking version of your report.
+## The data
+This data comprises a small sample of observations from a dataset collected by a social science research organization. 
+Values represent responses to psychological assessments (questionnaires) that users completed at the beginning and end of a program (experiment) intended to change behavior. Note that all users in this sample of data were assigned to the same experimental condition, “B1”. 
 
-By making foo.Rmd available, others can see and run your actual code. By also sharing foo.md and/or foo.html, others can casually browse your end product and decide if they want to obtain and run the code.
+Although users responded to the questions in a randomly assigned order, the variables themselves are always saved in the same order.
 
-## Installing packages needed for initial steps
+## The task
+As you will soon see, all of the responses to the assessment questions are stored in one variable, separated by commas. We need to write a program that parses these data so that the response to each question is in a separate column. 
+
+Then, we can proceed to investigate two research objectives. 
+1. Determine whether the behavioral intervention had any meaningful effect on the variation in responses from pre-test to post-test (ie within rows, compare the means at pre-test and post-test).
+2. Investigate patterns in the text responses using Natural Language Processing.
+
+## Installing initial packages
 ```{r}
 library(rmarkdown)
 library(tidyverse)
 library(googlesheets4)
 ```
 
-## Importing the Data
+# Step 1: Importing the Data
 
-Because the data is stored in a google sheet, we'll use the googlesheets4 package to create a sheet ID and then read in the data using that sheet ID.
+Because the data is stored in a Google sheet, we'll use the googlesheets4 package to create a sheet ID and then read in the data using that sheet ID. The 
 
-# Create a sheet id from google sheet data
+## Create a sheet id from google sheet data
 ```{r}
 gs4_deauth() #tells r to not ask for authentication (for publicly hosted data such as this file)
 
 ssid1 <- googlesheets4::as_sheets_id("https://docs.google.com/spreadsheets/d/1lo91j3axIZr-z85tam2KvCMf2UkFYlp6BrtMC2Bt7To/edit#gid=0") # creating a sheet id from the source url
 ```
 
-# Inspect the ssid1 object
+## Inspect the ssid1 object
 ```{r}
 class(ssid1) # confirms that ssid1 is indeed a sheet id, and the column type is character
 unclass(ssid1) # this is the google sheet ID, dropping the url
 ```
 
-# Read in verymessydata from google sheets 
+## Read in verymessydata from google sheets 
 
-We'll use the sheet id we created from the source url 
+We'll call the sheet id we created from the source url and store the data in a dataframe called df1 that we can then manipulate in successive dataframes.
 ```{r}
 df1 <- read_sheet(ssid1)
 ```
 
-# View and inspect the data
+# Step 2: Inspect the data
+
+With a quick glimpse (hehe) we can learn the number of rows and columns, column names, and column types.
 ```{r}
-glimpse(df1) # provides number of rows, columns, and column types
+glimpse(df1) 
+```
+We see 186 rows and two columns (OMID and AssessmentAnswers) in this data. The first column is numeric and contains response IDs that serve as a unique identifier to differentiate the responses of individual participants who completed the survey assessment. 
+
+The second column is a character vector that contains ALL of the responses participants provided to each item in the survey. 
+
+## First impressions
+Check out just the first few rows of data in df1 for a quick visual inspection.
+```{r}
+head(df1, 3)
 ```
 
-We see 186 rows and two columns (OMID and AssessmentAnswers) in this data. The first column is numeric and contains response IDs that serve as a unique identifier to differentiate the responses of individual participants. The second column is a character vector that contains ALL of the responses participants provided to each item in the survey. 
+You can see there are several different styles of delimiters (eg commas, parentheses, brackets) that separate the values that represent responses to different items in the survey.
 
-# The task at hand
-We will need to "tidy" this data by breaking the values in the AssessmentAnswers column into individual columns and setting their appropriate column types (eg numeric vs character) before we can proceed to analysis.
+Notice there are also two time stamps indicating the responses were collected at two different points in time: a "pre" and a "post". In this context, both pre and post responses were collected because users participated in a program in between these two time points that was expected to impact the variation in responses from pre-test to post-test. 
 
-# First impressions
-```{r}
-head(df1, 3) # shows just the first few rows of data for visual inspection
-```
 
-Take a peek at just the first row of data. You can see there are several different styles of separators (commas, parentheses, brackets) that indicate the responses to different items in the survey.
+# Step 3: Initial Diagnostics - Let R do the guesswork
 
-Notice there are also two time stamps indicating the responses were collected at two different points in time: a "pre" and a "post". In this context, both pre and post responses were collected because something happened in between these two time points that we think might impact the variation in responses from pre-test to post-test. 
-
-Given this sample data is from a social-psychological survey, the "test" in between pre and post responses was likely some experimental condition - either between-groups experiment (where some participants received one experimental manipulation and some participants received a different experimental manipulation) or within-groups experiment (where all participants received the same manipulation).
-
-## Initial diagnostics - let R try guessing the separators
+First, we'll try letting R try guessing the separators between values.
 
 One reason to start with this approach is because it's a quick and easy way to eyeball where we may run into issues. R will produce individual columns and automatically number them in the output data.
 ```{r}
@@ -91,7 +104,7 @@ We can see that R does a pretty good job guessing the "," delimiter for Assessme
 
 Where R's guessing breaks down first is at AssessmentAnswers12. But we can't necessarily tell that from the two lines above produced by head(). 
 
-"Yes" and "Unsure"responses in the AssessmentAnswers12 column include the "," separator that R identified, and they are followed by integers in the adjacent AssessmentAnswers13 column. With these two pieces of information we can probably assume that these values represent single word responses to the corresponding question. 
+"Yes" and "Unsure"responses in the AssessmentAnswers12 column include the "," separator that R identified, and they are followed by integers in the adjacent AssessmentAnswers13 column. With these two pieces of information we can probably assume that these two unique values represent single word responses to the corresponding question. 
 
 But let's take a closer peek at the values in the AssessmentAnswers12 column to see if there are additional responses that we can't see here. Minimally, we might expect we'll find a "No" response somewhere in this column given we see yes and unsure responses.
 
@@ -99,7 +112,9 @@ But let's take a closer peek at the values in the AssessmentAnswers12 column to 
 table(df_r$AssessmentAnswers12) # all 186 rows start with one of these four responses to the question corresponding with AssessmentAnswers12
 ```
 
-Upon further inspection we can see that there are four values of character responses to AssessmentAnswers12, with two additional responses we didn't see before. We see that there is indeed a "No" response option, and an additional response appears to begin with "I'm". We can surmise that this word/value is probably followed by additional words/values that R placed in adjacent columns following AssessmentAnswers12 - in part because we don't see the comma separator included last in the value/character string for "I'm" whereas it is included in the "No," "Unsure," and "Yes," responses. 
+Upon further inspection we can see that there are four values of character responses to AssessmentAnswers12, with two additional responses appearing that we didn't see before. 
+
+We see that there is indeed a "No" response option, and an additional response appears to begin with "I'm". We can surmise that this word/value is probably followed by additional words/values that R placed in adjacent columns following AssessmentAnswers12 - in part because we don't see the comma separator included last in the value/character string for "I'm" whereas it is included in the "No," "Unsure," and "Yes," responses. 
 
 Let's check out the values in AssessmentAnswers13 and AssessmentAnswers14 to see what may have spilled over into those columns.
 ```{r}
@@ -110,9 +125,9 @@ For the same reasons we suspected that responses that began with "I'm" for Asses
 1. "(not" values contained in AssessmentAnswers13 are probably followed by either "asked)" or "met)" values in AssessmentAnswers14.
 2. ""already" values in AssessmentAnswers13 are probably followed by "subscribed" values in AssessmentAnswers14.
 
-We now have strong suspicions that for some of the 186 rows there is spillage from the values in AssessmentAnswers12 to the values in AssessmentAnswers13 and AssessmentAnswers14.
+We now have strong evidence that for some of the 186 rows there is spillage from the values in AssessmentAnswers12 to the values in AssessmentAnswers13 and AssessmentAnswers14.
 
-Let's take a look at the values that appear when we "cross" the adjacent columns (ie 12 with 13 and, separately, 13 with 14). 
+Let's take a look at the values that appear when we "cross" the frequency values in the adjacent columns (ie 12 with 13 and, separately, 13 with 14). 
 
 ```{r}
 table(df_r$AssessmentAnswers12, df_r$AssessmentAnswers13)
@@ -122,8 +137,8 @@ Look at the pattern of 0s in the first row of the top table (beginning with I'm)
 
 Apply this same logic to the pattern of 0s for the "asked)," and "met)" columns in the first row of the bottom table, beginning with "(not". We can see that, again, each of those values don't appear with any other adjacent values.
 
-# Why are we bothering with this?
-This may seem like a tedious exercise in this "small data" context where the urge may be to just visually inspect the data to confirm your suspicions about what cell values should contain for particular columns. But finding other methods to conduct this process becomes increasingly important with larger datasets that make it untenable to glance at every single row.
+## Why are we bothering with this?
+This may seem like a tedious exercise in this "small data" context. The (understandable) urge may be to just visually inspect the data and use context clues to confirm your suspicions about what cell values should contain for particular columns. But finding other methods to conduct this process becomes increasingly important with larger datasets that make it untenable to glance at every single row.
 
 Collectively, we can learn 3 things from the above tables without even looking at the data frame df_r itself. 
 
@@ -131,9 +146,9 @@ Collectively, we can learn 3 things from the above tables without even looking a
 2. Responses to AssessmentAnswers13 are integers ranging from 2-6 inclusive OR one of two character responses: (not asked) or (not met).
 3. Responses to AssessmentAnswers14 are integers ranging from 0-6 inclusive.
 
-Clearly, R's attempt to find the appropriate separators and create new columns using the "," separator didn't get us where we want to go. But it's useful for both initial diagnostic purposes.
+Clearly, R's attempt to find the appropriate separators and create new columns using the "," separator didn't quite get us where we want to go. But it's useful for both demonstration and initial diagnostic purposes.
 
-## Lets try an alternative approach
+# Step 4: Try an alternative approach - Chunking
 
 Let's first separate the AssessmentAnswers column into more manageable chunks of data. Whereas R's naiive approach was to separate on the commas in the data, we'll first try a different separator. 
 
@@ -148,7 +163,6 @@ df2 <- df1 %>%
 ```
 
 My own naiive guess taking a quick glance at the first row of data was that there would be 4 chunks. Note the warning produced here. 
-
 Because we included too_many = "debug" in the above R added new columns that tell us for each row:
 1. AssessmentAnswers_ok column - indicates whether all values in the split were accounted for (TRUE/FALSE).
 2. AssessmentAnswers_pieces column - indicates how many chunks R was expecting using ] as the delimiter.
@@ -162,11 +176,13 @@ table(df2$AssessmentAnswers_pieces)
 table(df2$AssessmentAnswers_remainder)
 ```
 
-For all 186 rows in the data R is expecting 6 chunks (ie columns) where we specified 4 chunks with our selected delimiter "]". Because of this mis-match R flagged all 186 rows as FALSE in the AssessmentAnswers_ok column.
+For all 186 rows in the data R is expecting 6 chunks (ie columns) in the AssessmentAnswers_pieces column, whereas we specified 4 chunks with our selected delimiter "]". Because of this mis-match R flagged all 186 rows as FALSE in the AssessmentAnswers_ok column.
 
-But, because the only values in the AssessmentAnswers_remainder column are separators we no longer need we can continue to break out columns from these four chunks
+But, because the only values in the AssessmentAnswers_remainder column are separators we no longer need we can proceed to breaking out individual columns from these four chunks.
 
-# Starting with chunk1 -
+## Step 4a
+
+We'll start with chunk1.
 
 Again peeking at the first few rows of data in the below we see several [ separators. 
 
@@ -183,7 +199,7 @@ df3 <- df2 %>%
                               too_many = "debug")
 ```
 
-Let's see how that worked out by checking values of chunk1_ok to make sure we've accounted for each value with our 4 new chunks (ie chunk1a-chunk1d).
+Let's see how that worked out by checking values of chunk1_ok to make sure we've accounted for all pieces with our 4 new chunks (ie chunk1a-chunk1d).
 ```{r}
 table(df3$chunk1_ok)
 ```
@@ -196,9 +212,10 @@ But let's peek at the values in the first few rows of this new data frame to see
 head(df3, 3)
 ```
 
-Chunk1a and chunk1b appear to be empty, as we would expect.
-Chunk1c contains a mixture of integer and text responses, all separated between commas.
-Chunk1d contains a series of text responses  - with each response appearing between a single set of pipes (ie |some text here|) - and commas separating the pipes that contain the text responses.
+Three things to notice here:
+1. Chunk1a and chunk1b appear to be empty columns, as we would expect.
+2. Chunk1c contains a mixture of integer and text responses, all separated between commas.
+3. Chunk1d contains a series of text responses  - with each response appearing between a single set of pipes (ie |some text here|) - and commas separating the pipes that contain the text responses.
 
 Let's confirm that chunk1a-chunk1b are empty by peeking at their values.
 ```{r}
@@ -215,8 +232,8 @@ commas <- str_count(df3$chunk1c, pattern = ",") # count and store the number of 
 table(commas) # summarize the number of rows in the commas object in which there are 22 or 23 commas 
 ```
 What the above values tell us is that:
-1. We will want 23 new columns.
-2. 50 rows contain only 22 commas in chunk1c and thus will have missing data in one of the 23 columns. We'll want to make sure we keep a lookout for that in the output data.
+1. We will want 23 new columns (the maximum number of commas in each row of the data).
+2. 50 rows contain only 22 commas in chunk1c and thus will have missing data in one of the 23 columns comprising this chunk. We'll want to make sure we keep a lookout for that in the output data.
 
 Note that I named the new columns using some educated guesses based on the values in each column.
 ```{r}
@@ -232,41 +249,47 @@ df4 <- df3 %>%
                                                      "Condition_pre"), too_many = "debug")
 ```
 
-Investigating the warning message with the tables below to confirm what we learned in the last step.
+Investigating the warning message with the tables below to confirm what we learned in the last step:
 ```{r}
-table(df4$chunk1c_ok) # this actually misleads us! Here the rows flagged as FALSE actually appear correctly in the data.
-table(df4$chunk1c_remainder) # but to clearly see that we have to look at values in this column. We see 136 rows with a comma and 50 rows that are empty cells. 
-table(df4$chunk1c_pieces) # here we see our 50 cases with only 23 pieces (instead of 24) - let's find the source of the missing data
+table(df4$chunk1c_ok) # These values will actually mislead us if we don't also peek at the additional diagnostic columns. Here the 136 rows flagged as FALSE actually appear correctly in the data. To clearly see that we have to look at values in the chunk1c_remainder column.
+
+table(df4$chunk1c_remainder) # We see 136 rows with a comma in this colummn. This is the final comma in the string for rows that had 23 instead of 22 commas. Because those values aren't meaningful we'll ignore that for the moment. There are also 50 rows that are empty cells, indicating that there were no pieces left out in these rows.
+
+table(df4$chunk1c_pieces) # Here we see our 50 cases with only 23 pieces (instead of 24) - let's find the source of the missing data
 ```
 
-Now lets take a quick peek at the first few rows of data in df4. 
+
+Now lets take a quick peek at the first few rows of data in df4 to look for the source of missing data. 
 ```{r}
 head(df4, 3)
 ```
 
 Separating chunk1c on the comma delimiter did a pretty decent job populating the new columns here.
 
-Where the above code for splitting chunk1c breaks down is somewhere between the Political_ideology column and the Condition_pre column. 
+Where the above code for splitting chunk1c breaks down is somewhere between the Political_ideology column and the Condition_pre column. Because we know that all participants were assigned to the "B1" condition, we know that all appearances of "B1" in the data should fall into the Condition_pre column. 
 
-Chunk1d and chunk2-chunk4 were unaffected, so we'll focus on the Political_ideology, Religion, Zip, and Condition_pre columns.
+Chunk1d and chunk2-chunk4 were unaffected, so we'll focus on the Political_ideology, Religion, Zip, and Condition_pre columns that we broke out from chunk1c.
 
 ```{r}
-table(df4$Political_ideology) # 11 unique values appear in this column - all seem to be reasonable responses to the corresponding item
-table(df4$Religion) # these values are a mix of character and numeric responses, along with a "Prefer not to say" response.
-
-table(df4$Zip) # these values are a mix of character and numeric responses, along with a "Prefer not to say" response.
-# most notably, "B1" appears 50 times in this column - and we know that the adjacent Condition_pre column should contain these values.
-
-table(df4$Condition_pre) # confirms the missing data for the 50 rows in which values of Condition_pre (ie B1) are instead contained in Zip.
+table(df4$Political_ideology) 
+table(df4$Religion) 
+table(df4$Zip) 
+table(df4$Condition_pre)
 ```
+
+What can we learn from the above tables?
+1. Political_ideology has 11 unique values - all seem to be reasonable responses to the corresponding question.
+2. Religion - values are a mix of character and numeric responses, along with a "Prefer not to say" response.
+3. Zip - these values are also a mix of character and numeric responses, along with a "Prefer not to say" response. Most notably, "B1" appears 50 times in this column - and we know that the adjacent Condition_pre column should contain these values.
+4. Condition_pre - confirms the missing data for the 50 rows in which values of Condition_pre (ie B1) are instead contained in Zip.
 
 Collectively, the tables above tell us that the Religion column is the underlying culprit - and our source of missing data.
 
 Something VERY important to note about the "missing" values currently contained in Condition_pre:
 
-Although our eyes may digest those 50 cases as "missing" - R does not know that they are missing, just that they are blank/empty cells. So, we need to tell R to treat those empty cells as missing values. 
+Although our eyes may digest those 50 cases as "missing" - R does not know that they are in fact missing, just that they are blank/empty cells. So, we need to tell R to treat those empty cells as missing values.
 
-Now we'll use some case logic to fix the values in these columns.
+We'll use some case logic to fix the values in these columns.
 ```{r}
 df5 <- df4 %>%
   
@@ -282,14 +305,22 @@ df5 <- df4 %>%
     is.na(Condition_pre_r) ~ NA_character_,
     !is.na(Condition_pre_r) ~ as.character(Religion))) %>%
   
-  select(-c(Religion, Zip, Condition_pre, chunk1c:chunk1c_remainder))
+  select(-c(Religion, Zip, chunk1c:chunk1c_remainder))
+
+# checking frequency of values in our new columns to make sure our transformations worked the way we intended
+table(df5$Condition_pre_r)
+table(df5$Zip_r)
+table(df5$Religion_r)
 
 ```
 
+All set!
 
 We'll leave chunk1d alone for now as those responses appear to represent responses to a single item/question. Note the pipes || that wrap the values in this column.
 
-# Moving on to chunk2 -
+## Step 4b
+
+Moving on to chunk2.
 
 We'll repeat how we started off breaking up chunk1c by noticing that in the chunk2 column 6 commas appear in each of the 186 rows.
 
@@ -312,11 +343,13 @@ table(df6$chunk2_remainder)
 table(df6$chunk2_pieces)
 ```
 
-We're all set! 
+We're good to go! 
 
-# On to breaking up chunk3
+## Step 4c
 
-Take a peek at the chunk3 column for just the first row. You'll see lots of commas and a couple of brackets.
+On to breaking up chunk3.
+
+Take a peek at the chunk3 column for just the first row. You'll see lots of commas, some pipes, and a couple of brackets.
 ```{r}
 
 df6$chunk3[1] 
@@ -341,7 +374,7 @@ table(df7$chunk3_remainder)
 table(df7$chunk3_pieces)
 ```
 
-Take a peek at the chunk3b column for just the first row. You'll see a number of commas. Let's count them to tell us how many new columns we'll want.
+Now take a peek at the chunk3b column for just the first row. You'll see a number of commas. Let's count them to tell us how many new columns we'll want.
 ```{r}
 
 df7$chunk3b[1] 
@@ -351,10 +384,10 @@ table(commas) # summarize the number of rows in the commas object
 ```
 
 What the above values tell us is that:
-1. We will want 23 new columns.
-2. 50 rows contain only 22 commas in chunk3b and thus will have missing data in one of the 23 columns. 
+1. 136 rows contain 23 commas.
+2. 50 rows contain only 22 commas in chunk3b and thus will have missing data in one of the 23 columns. Again, we'll want to make sure we keep a lookout for that in the output data.
 
-Sound familiar? Remember that this dataset contain pre and post values that were assessed before and after an experimental condition. Again, we'll want to make sure we keep a lookout for that in the output data.
+Sound familiar? Remember that this dataset contains pre- and post-test values that were assessed before and after an experimental condition. We'll use the same approach as we did for breaking up the chunk1c column.
 
 Note that I named the new columns following the educated guesses I made for the postfixed _pre columns.
 
@@ -368,12 +401,12 @@ df8 <- df7 %>%
                                                     "Race_ethnicity_post", "Political_ideology_post", "Religion_post", "Zip_post",
                                                     "Condition_post"),
                                             too_many="debug")
-
+# investigating the new diagnostic columns
 table(df8$chunk3b_ok)
 table(df8$chunk3b_pieces)
 table(df8$chunk3b_remainder)
 ```
-Notice that we'll have the same problems here with the columns output from chunk3b as we did when breaking up column 1c
+Notice that we'll run into the same problems here with the columns output from chunk3b as we did when breaking up column 1c.
 
 ```{r}
 table(df8$Political_ideology_post) # 11 unique values appear in this column - all seem to be reasonable responses to the corresponding item
@@ -389,7 +422,7 @@ Collectively, the tables above tell us that, again, the Religion column is the u
 
 Something important enough to call out again is that the 50 values currently contained in Condition_post that appear to be "missing" at first glance are blank/empty cells. 
 
-So, we need to use some case logic once again to tell R to treat those empty cells as missing values. 
+So, we need to use some case logic once again to correct the values in these columns and to tell R to treat those empty cells as missing values. 
 
 ```{r}
 df9 <- df8 %>%
@@ -406,64 +439,136 @@ df9 <- df8 %>%
     is.na(Condition_post_r) ~ NA_character_,
     !is.na(Condition_post_r) ~ as.character(Religion_post))) %>%
   
-  select(-c(Religion_post, Zip_post, Condition_post, chunk3b:chunk3b_remainder))
+  mutate(Condition_B1 = "B1") %>% # since we know all participants received the same experimental condition we'll simply set all values in this column to B1 and drop all other condition columns.  
+  
+  select(-c(Condition_pre, Condition_pre_r, Religion_post, Zip_post, Condition_post, Condition_post_r, chunk3b:chunk3b_remainder))
 
 ```
 
 
-Now let's see if responses to those _pre and _post demographic questions are the same - as we might expect given the nature of these questions. If the values match up across the two sets of items we can safely drop the _post columns and retain the _pre columns. 
-
+Now let's see if responses to those _pre and _post demographic questions are the same - as we might expect given the nature of these questions. If the values match up across the two sets of items we can safely drop the _post columns and retain the pre-test columns. 
 ```{r}
+df10 <- df9 %>%
+  mutate(check1 = case_when(
+    Age == Age_post ~ TRUE,
+    Age != Age_post ~ FALSE)) %>%
+  mutate(check2 = case_when(
+    Sex == Sex_post ~ TRUE,
+    Sex != Sex_post ~ FALSE)) %>%
+  mutate(check3 = case_when(
+    Race_ethnicity == Race_ethnicity_post ~ TRUE,
+    Race_ethnicity != Race_ethnicity_post ~ FALSE)) %>%
+  mutate(check4 = case_when(
+    Political_ideology == Political_ideology_post ~ TRUE,
+    Political_ideology != Political_ideology_post ~ FALSE)) %>%
+  mutate(check5 = case_when(
+    Religion_r == Religion_post_r ~ TRUE,
+    Religion_r != Religion_post_r ~ FALSE)) %>%
+  mutate(check6 = case_when(
+    Zip_r == Zip_post_r ~ TRUE,
+    Zip_r != Zip_post_r ~ FALSE))
+
+table(df10$check1)
+table(df10$check2)
+table(df10$check3)
+table(df10$check4)
+table(df10$check5)
+table(df10$check6)
 
 ```
+All set! 
 
 
 We'll skip chunk3c - the text responses contained within pipes - for now for the same reasons we skipped over chunk1d.
 
+## Step 4d
 
+Now, breaking apart chunk4. 
 
-
-# Finally, breaking apart chunk4 
-
-We'll use the "," delimiter again here.
+Start by getting a feel for how many pieces we should expect.
 
 ```{r}
-
-df9$chunk4[1] 
+df10$chunk4[1] 
 commas <- str_count(df9$chunk4, pattern = ",") # count and store the number of commas appearing in each row in an object "commas"
-table(commas) # summarize the number of rows in the commas object
+table(commas) # summarize the number of commas in each row contained in the commas object
 ```
-
+We'll use the "," delimiter again here and specify 7 pieces (ie the number of commas plus 1).
 
 ```{r}
-df10 <- df9 %>%
+df11 <- df10 %>%
   separate_wider_delim(chunk4, delim = ",", names=c("chunk4a", "chunk4b", "chunk4c", "chunk4d", "chunk4e", "chunk4f", "chunk4g"),
                        too_many="debug")
 
-table(df10$chunk4_ok)
-table(df10$chunk4_pieces)
-table(df10$chunk4_remainder)
+table(df11$chunk4_ok)
+table(df11$chunk4_pieces)
+table(df11$chunk4_remainder)
 ```
 
-## Now for some final cleanup and exploration
+# Step 5: Some final cleanup
+
+Extracting date features from chunk2g and chunk4g so that we know when the pre- and post-test responses occurred.
 ```{r}
-df11 <- df10 %>%
-  select(OMID:Political_ideology, Religion = Religion_r, Zip = Zip_r, Condition_pre = Condition_pre_r, 
-         Text_responses_pre = chunk1d, chunk2b:chunk2c, TimeStampTxt_pre = chunk2g, 
-         Q1_post:Q16_post, Age_post:Political_ideology_post, 
-         Religion_post = Religion_post_r, Zip_post = Zip_post_r, Condition_post = Condition_post_r,
-         Text_responses_post = chunk3c, chunk4b:chunk4c, TimeStampTxt_post = chunk4g)
+df12 <- df11 %>%
+  
+  separate_wider_delim(chunk2g, delim = ">", names=c("txt", "Time_stamp_pre"),
+                       too_many="debug") %>%
+  separate_wider_delim(Time_stamp_pre, delim = "T", names=c("date_pre", "tz_time"),
+                       too_many="debug") %>%
+  mutate(Date_pre = ymd(date_pre)) %>%
+  
+  separate_wider_delim(chunk4g, delim = ">", names=c("txt2", "Time_stamp_post"),
+                       too_many="debug") %>%
+  separate_wider_delim(Time_stamp_post, delim = "T", names=c("date_post", "tz_time_post"),
+                       too_many="debug") %>%
+  mutate(Date_post = ymd(date_post))
 
-# fix condition cols
-# need to make the time stamp cols into class = date
-# remove all unnecessary parentheses
-# decide if I want to do anything else with the text response columns in chunk1d and chunk3c
+```  
+
+Check that our date indicators are now class = date. Then, rename and organize the variables in a sensible way, dropping ones we no longer need.
+```{r}
+
+class(df12$Date_pre)
+class(df12$Date_post)
+
+df13 <- df12 %>%
+  select(OMID:Political_ideology, Religion = Religion_r, Zip = Zip_r, Condition_B1, 
+         Text_responses_pre = chunk1d, Q17_pre = chunk2b, Q18_pre = chunk2c, Date_pre, 
+         Q1_post:Q16_post, Text_responses_post = chunk3c, Q17_post = chunk4b, Q18_post = chunk4c, Date_post)
+
+
+# Still need to remove blank spaces from the below variables - we can see these most clearly in df11
+
+head(df11, 3)
+  
+#  mutate(across(c(Q1_pre:Q11_pre, Q13_pre:Q15_pre, Q1_post:Q11_post),  ~ as.numeric(.x)))
+
+
+# should also format tables more pleasingly
+# get chatgpt to build me a cool RMarkdown theme
 ```
 
+  
+
+# On to the fun part...analysis time!
+
+Recall our two objectives:
+
+1. Determine whether the behavioral intervention had any meaningful effect on the variation in responses from pre-test to post-test (ie within rows, compare the means at pre-test and post-test).
+2. Investigate patterns in the text responses using Natural Language Processing.
 
 
+## Investigate the means at pre-test vs post-test
+
+Four of the questions assess "intellectual humility": Q5, Q7, Q8, and Q9. As you can see, we code the answers into numbers, where 0 is the "worst" answer and 6 is the "best" answer to each question. Thus, you can calculate someone's intellectual humility by averaging their numerical scores across those four questions.
+
+Your task is to calculate the average effect that OpenMind has on users' intellectual humility. Do so by calculating the Cohen's d between the average user's intellectual humility on the first assessment (before they use OpenMind) and the second assessment (after they've used OpenMind). If you don't know what Cohen's d is, you're welcome to look it up.
 
 
+## Investigate text responses in chunk1d and chunk3c
+
+If you have experience with machine learning: Your task is to describe (in words) how you would use NLP to assess the answers on the free-response question (B1). Which algorithm(s) would you use? How would you evaluate the outputs?
+
+If you have experience running studies that used people to do manual coding (e.g., on Mechanical Turk): Your task is to describe (in words) how you would use humans to assess the answers on the free-response question (B1). How would you direct humans to code the answers? How would you ensure good-quality coding?
 
 
 
