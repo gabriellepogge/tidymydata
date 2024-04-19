@@ -3,12 +3,7 @@ title: "Tidying Very Messy Data"
 author: "Gaby Pogge"
 date: "2024-04-16"
 output: 
-  html_document:
-    theme: readable 
-    toc: yes
-    toc_depth: 3
-    toc_float: yes
-    keep_md: yes
+  github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -16,6 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Understand the Problem
+
+theme: readable 
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
 
 In a perfect world when you want to jump into an exciting analysis your data is tidy and clean and you can dive right in. 
 
