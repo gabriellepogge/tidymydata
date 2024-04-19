@@ -4,12 +4,11 @@ author: "Gaby Pogge"
 date: "2024-04-16"
 output: 
   html_document:
-    toc: TRUE
+    theme: readable 
+    toc: yes
     toc_depth: 3
-    toc_float: TRUE
-  keep_md: TRUE
-
-    
+    toc_float: yes
+    keep_md: yes
 ---
 
 ```{r setup, include=FALSE}
