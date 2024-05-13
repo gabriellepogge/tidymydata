@@ -1,5 +1,7 @@
-# tidymydata
+# tidymydata project
 
-This is a line from RStudio.
+In a perfect world when you want to jump into an exciting analysis your data is tidy and clean and you can dive right in.
 
-This is a line edited directly in GitHub.
+However, that is often not the case. For a variety of reasons involving how data is collected, stored, and output from the data source you may find yourself in a situation where the data you want to work with are very messy.
+
+In this exercise we’ll walk through how to “tidy” a messy dataset using the R tidyverse package.

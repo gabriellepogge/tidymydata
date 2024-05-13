@@ -5,8 +5,6 @@ Gaby Pogge
 
 # Understand the Problem
 
-theme: readable toc: yes toc_depth: 3 toc_float: yes
-
 In a perfect world when you want to jump into an exciting analysis your
 data is tidy and clean and you can dive right in.
 
@@ -15,16 +13,17 @@ how data is collected, stored, and output from the data source you may
 find yourself in a situation where the data you want to work with are
 very messy.
 
-In this exercise we’ll walk through how to “tidy” a messy dataset using
-the R tidyverse package.
+In this exercise we’ll walk through how to “tidy” a messy dataset –one
+for which I had limited knowledge of the content of the data– using the
+R tidyverse package.
 
 ## The data
 
 This data comprises a small sample of observations from a dataset
 collected by a social science research organization. Values represent
 responses to psychological assessments (questionnaires) that users
-completed at the beginning and end of a program (experiment) intended to
-change behavior. Note that all users in this sample of data were
+completed before and after a program (experiment) intended to increase
+intellectual humility. Note that all users in this sample of data were
 assigned to the same experimental condition, “B1”.
 
 Although users responded to the questions in a randomly assigned order,
@@ -37,11 +36,17 @@ are stored in one variable, separated by commas. We need to write a
 program that parses these data so that the response to each question is
 in a separate column.
 
-Then, we can proceed to investigate two research objectives. 1.
-Determine whether the behavioral intervention had any meaningful effect
-on the variation in responses from pre-test to post-test (ie within
-rows, compare the means at pre-test and post-test). 2. Investigate
-patterns in the text responses using Natural Language Processing.
+We won’t dive into actually analyzing the research questions here
+because the focus is on getting this data tidy to prepare for analysis.
+But to give us some sense of the data we’re looking at, we know we’ll
+have responses to some demographic questions and we’ll have pre-test and
+post-test responses to the same items–both before and after the
+experiment occurred. For these items the interest is in whether
+participants showed a meaningful increase in intellectual humility after
+the experiment, with higher means on the group of post-test items
+compared with the group of pre-test items. We’ll also see some text
+responses that we might explore with, for example, natural language
+processing.
 
 ## Installing initial packages
 
@@ -69,7 +74,8 @@ library(googlesheets4)
 
 Because the data is stored in a Google sheet, we’ll use the
 googlesheets4 package to create a sheet ID and then read in the data
-using that sheet ID. The
+using that sheet ID. This method becomes particularly useful when you’re
+working with many sheets and prefer not to look at long, messy URLs.
 
 ## Create a sheet id from google sheet data
 
@@ -95,7 +101,7 @@ unclass(ssid1) # this is the google sheet ID, dropping the url
 
 ## Read in verymessydata from google sheets
 
-We’ll call the sheet id we created from the source url and store the
+We’ll call the sheet id we created from the source URL and store the
 data in a dataframe called df1 that we can then manipulate in successive
 dataframes.
 
@@ -158,7 +164,7 @@ post-test.
 
 # Step 3: Initial Diagnostics - Let R do the guesswork
 
-First, we’ll try letting R try guessing the separators between values.
+First, we’ll let R try guessing the separators between values.
 
 One reason to start with this approach is because it’s a quick and easy
 way to eyeball where we may run into issues. R will produce individual
@@ -1522,55 +1528,6 @@ head(df11, 3)
 
 ``` r
 #  mutate(across(c(Q1_pre:Q11_pre, Q13_pre:Q15_pre, Q1_post:Q11_post),  ~ as.numeric(.x)))
-
-
-# should also format tables more pleasingly
-# get chatgpt to build me a cool RMarkdown theme
 ```
 
 # On to the fun part…analysis time!
-
-Recall our two objectives:
-
-1.  Determine whether the behavioral intervention had any meaningful
-    effect on the variation in responses from pre-test to post-test (ie
-    within rows, compare the means at pre-test and post-test).
-2.  Investigate patterns in the text responses using Natural Language
-    Processing.
-
-## Investigate the means at pre-test vs post-test
-
-Four of the questions assess “intellectual humility”: Q5, Q7, Q8, and
-Q9. As you can see, we code the answers into numbers, where 0 is the
-“worst” answer and 6 is the “best” answer to each question. Thus, you
-can calculate someone’s intellectual humility by averaging their
-numerical scores across those four questions.
-
-Your task is to calculate the average effect that OpenMind has on users’
-intellectual humility. Do so by calculating the Cohen’s d between the
-average user’s intellectual humility on the first assessment (before
-they use OpenMind) and the second assessment (after they’ve used
-OpenMind). If you don’t know what Cohen’s d is, you’re welcome to look
-it up.
-
-## Investigate text responses in chunk1d and chunk3c
-
-If you have experience with machine learning: Your task is to describe
-(in words) how you would use NLP to assess the answers on the
-free-response question (B1). Which algorithm(s) would you use? How would
-you evaluate the outputs?
-
-If you have experience running studies that used people to do manual
-coding (e.g., on Mechanical Turk): Your task is to describe (in words)
-how you would use humans to assess the answers on the free-response
-question (B1). How would you direct humans to code the answers? How
-would you ensure good-quality coding?
-
-## Including Plots
-
-You can also embed plots, for example:
-
-![](tidyingmessydata_files/figure-gfm/pressure-1.png)<!-- -->
-
-Note that the `echo = FALSE` parameter was added to the code chunk to
-prevent printing of the R code that generated the plot.
